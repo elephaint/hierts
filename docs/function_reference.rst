@@ -1,7 +1,7 @@
 Function Reference
 ==================
 
-hierTS is a lightweight package. We expose a set of functions.
+hierTS is a lightweight package. We expose a compact set of functions to perform hierarchical forecast reconciliation.
 
 .. automodule:: hierts
    :members:

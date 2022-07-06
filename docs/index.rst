@@ -13,13 +13,16 @@ Welcome to hierts's documentation!
 
 **Hierachical Time Series** (hierTS) is a lightweight package that offers hierarchical forecasting reconciliation techniques to Python users.
 
-It is aimed at users interested in hierarchical forecasting reconciliation. For more details, check out the `Quickstart section <./quickstart.md>`__ or the examples in our `Github <https://github.com/elephaint/hierts>`__ repository.
+It is aimed at users interested in hierarchical forecasting reconciliation. Currently, this package provides a Python implementation of the forecast reconciliation methods used in: 
+
+* Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). *Optimal forecast reconciliation for hierarchical and grouped time series through trace minimization*. Journal of the American Statistical Association, 114(526), 804-819.
 
 .. toctree::
    :maxdepth: 1
    :caption: Contents:
 
 	Installation <installation.md>
-	Quick Start <quick_start.md>
+	Example Tourism <notebooks/example_tourism>
+	Example Reconciliation <notebooks/example_reconciliation>
 	Function reference <function_reference.rst>
 	Support <support.md>

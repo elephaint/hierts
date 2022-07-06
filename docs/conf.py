@@ -33,7 +33,7 @@ release = '1.0'
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['myst_parser', 'sphinx_rtd_theme', 'sphinx.ext.autodoc', 'sphinx.ext.linkcode']
+extensions = ['myst_parser', 'sphinx_rtd_theme', 'sphinx.ext.autodoc', 'sphinx.ext.linkcode', 'nbsphinx']
 
 # From numpy: https://github.com/numpy/numpy/blob/83828f52b287fefb3d8753a21bd3441997a4d687/doc/source/conf.py#L303-L348
 import hierts 

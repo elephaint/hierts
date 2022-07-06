@@ -20,9 +20,9 @@ Clone the repository, build the package and run `pip install .` in the newly cre
 
 ## Dependencies ##
 * [`pandas>=1.3.5`](https://pandas.pydata.org/getting_started.html)
-* [`numba>=0.53.1`](https://numba.readthedocs.io/en/stable/user/installing.html). 
+* [`numba>=0.53.1`](https://numba.readthedocs.io/en/stable/user/installing.html) 
 
-Installing via PyPi will install the dependencies automatically.
+Installing via PyPi and via source as listed above will install the dependencies automatically.
 
 ## Verification ##
 To verify, download & run an example from the examples folder to verify the installation is correct:
