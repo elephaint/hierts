@@ -1,3 +1,4 @@
+""""""
 """
    Copyright (c) 2022- Olivier Sprangers as part of Airlab Amsterdam
 
@@ -36,11 +37,9 @@ def reconcile_forecasts(yhat: np.ndarray, S: np.ndarray, residuals: np.ndarray=N
         :type yhat: numpy.ndarray
         :param S: summing matrix detailing the hierarchical tree of size [n_timeseries x n_bottom_timeseries]
         :type S: numpy.ndarray
-        :param residuals: residuals (i.e. forecast errors) for each time series for a set of historical timesteps of 
-        size [n_timeseries x n_timesteps_residuals]. Required when using 'wls_var', 'mint_cov', 'mint_shrink'
+        :param residuals: residuals (i.e. forecast errors) for each time series for a set of historical timesteps of size [n_timeseries x n_timesteps_residuals]. Required when using 'wls_var', 'mint_cov', 'mint_shrink'
         :type residuals: numpy.ndarray, optional
-        :param method: reconciliation method, defaults to 'ols'. Options are: 'ols', 'wls_var', 'wls_struct', 
-        'mint_cov', 'mint_shrink'
+        :param method: reconciliation method, defaults to 'ols'. Options are: 'ols', 'wls_var', 'wls_struct', 'mint_cov', 'mint_shrink'
         :type method: str, optional
 
         :return: ytilde, reconciled forecasts for each time series for each timestep of size [n_timeseries x n_timesteps]
@@ -91,13 +90,15 @@ def reconcile_forecasts(yhat: np.ndarray, S: np.ndarray, residuals: np.ndarray=N
 
 @njit(parallel=True, fastmath=True, cache=True)
 def shrunk_covariance_schaferstrimmer(residuals, residuals_mean, residuals_std):
-    # Shrink empirical covariance according to the following method:
-    #   Schäfer, Juliane, and Korbinian Strimmer. 
-    #   ‘A Shrinkage Approach to Large-Scale Covariance Matrix Estimation and 
-    #   Implications for Functional Genomics’. Statistical Applications in 
-    #   Genetics and Molecular Biology 4, no. 1 (14 January 2005). 
-    #   https://doi.org/10.2202/1544-6115.1175.
+    """Shrink empirical covariance according to the following method:
+        Schäfer, Juliane, and Korbinian Strimmer. 
+        ‘A Shrinkage Approach to Large-Scale Covariance Matrix Estimation and 
+        Implications for Functional Genomics’. Statistical Applications in 
+        Genetics and Molecular Biology 4, no. 1 (14 January 2005). 
+        https://doi.org/10.2202/1544-6115.1175.
 
+    :meta private:
+    """
     n_timeseries = residuals.shape[0]
     n_samples = residuals.shape[1]
     # We need the empirical covariance, the off-diagonal sum of the variance of 
@@ -139,32 +140,17 @@ def shrunk_covariance_schaferstrimmer(residuals, residuals_mean, residuals_std):
     return W
 
 def calc_summing_matrix(df: pd.DataFrame, aggregation_cols: List[str], aggregations: List[List[str]] = None) -> pd.DataFrame:
-    """Given a dataframe of timeseries and columns indicating their groupings, this function
-    calculates a summing matrix according to a set of specified aggregations for the time series. 
+    """Given a dataframe of timeseries and columns indicating their groupings, this function calculates a summing matrix according to a set of specified aggregations for the time series. 
 
         :param df: DataFrame containing information about time series and their groupings
         :type df: pd.DataFrame
         :param aggregation_cols: List containing all the columns that contain categorization of the timeseries. 
         :type df: List[str]
-        :param aggregations: List of Lists containing the aggregations required, defaults to None. In case of None, 
-        the summing matrix will only contain (i) the summation vector for the total series (i.e. a row vector of ones
-         of length n_bottom_series), and (ii) the summation matrix for the bottom level series (i.e. the identity matrix 
-         for the amount of bottom level time series). Hence, in the case of None, the output df_S will have
-         shape [n_bottom_series + 1, n_bottom_series]
+        :param aggregations: List of Lists containing the aggregations required, defaults to None. In case of None, the summing matrix will only contain (i) the summation vector for the total series (i.e. a row vector of ones of length n_bottom_series), and (ii) the summation matrix for the bottom level series (i.e. the identity matrix for the amount of bottom level time series). Hence, in the case of None, the output df_S will have shape [n_bottom_series + 1, n_bottom_series]
         :type df: List[List[str]]
         
-        :return: df_S, output dataframe containing the summing matrix of shape [(n_bottom_timeseries + n_aggregate_timeseries) x n_bottom_timeseries]
-        The number of aggregate time series is the result of applying all the required aggregations.
+        :return: df_S, output dataframe containing the summing matrix of shape [(n_bottom_timeseries + n_aggregate_timeseries) x n_bottom_timeseries]. The number of aggregate time series is the result of applying all the required aggregations.
         :rtype: pd.DataFrame
-
-        Example:
-		
-		.. code-block:: python
-			
-            df = pd.DataFrame([])
-            aggregation_cols = ['Level1', 'Level2']
-            aggregations = [['Level1'], ['Level1', 'Level2']]
-            df_S = calc_summing_matrix(df, aggregations, aggregation_cols)
     
     """
     # Set aggregations to empty list in case it is not provided
@@ -209,9 +195,7 @@ def apply_reconciliation_methods(forecasts: pd.DataFrame, df_S: pd.DataFrame, re
         :type df_S: pd.DataFrame
         :param residuals: dataframe containing the residuals on the training set for all timeseries.
         :type residuals: pd.DataFrame
-        :param methods: list containing which reconciliation methods to be applied, defaults to None. 
-        Choose from: 'ols', 'wls_var', 'wls_struct', 'mint_cov', 'mint_shrink'. None means all methods 
-        will be applied.
+        :param methods: list containing which reconciliation methods to be applied, defaults to None. Choose from: 'ols', 'wls_var', 'wls_struct', 'mint_cov', 'mint_shrink'. None means all methods will be applied.
         :type methods: List[str]
         
         :return: forecasts_methods, dataframe containing forecasts for all reconciliation methods
@@ -280,8 +264,7 @@ def calc_level_method_rmse(forecasts_methods: pd.DataFrame, actuals: pd.DataFram
         :param base: base to compare rmse against for the `rel_rmse` output. 
         :type base: str
         
-        :return: Tuple[rmse, rel_rmse], tuple containing (i) rmse for all methods, across all levels, and (ii)
-        relative rmse for all methods, across all levels. 
+        :return: tuple containing (i) rmse for all methods, across all levels, and (ii) relative rmse for all methods, across all levels. 
         :rtype: Tuple[pd.DataFrame, pd.DataFrame]
     
     """
