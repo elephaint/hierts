@@ -16,13 +16,28 @@
    https://github.com/elephaint/hierts/blob/main/LICENSE
 
 """
+# This example is based on chapter 11 of:
+#
+# Hyndman, R.J., & Athanasopoulos, G. (2021) Forecasting: principles and practice, 
+# 3rd edition, OTexts: Melbourne, Australia. OTexts.com/fpp3. Accessed on 05/07/2022.
+#
+# The data was taken from R's tsibble package:
+# 
+# Wang, E, D Cook, and RJ Hyndman (2020). A new tidy data structure to support exploration 
+# and modeling of temporal data, Journal of Computational and Graphical Statistics, 29:3, 
+# 466-478, doi:10.1080/10618600.2019.1695624.
+# 
+# https://tsibble.tidyverts.org/
+#
+# Download the .csv file at: https://github.com/elephaint/hierts/tree/main/examples/data
+#
 #%% Read packages
 import pandas as pd
 import numpy as np
-from src import calc_summing_matrix, apply_reconciliation_methods, aggregate_bottom_up_forecasts, calc_level_method_rmse
+from hierts.reconciliation import calc_summing_matrix, apply_reconciliation_methods, aggregate_bottom_up_forecasts, calc_level_method_rmse
 from sktime.forecasting.ets import AutoETS
 #%% Read data
-df = pd.read_csv('examples/data/tourism.csv', index_col=0)
+df = pd.read_csv('data/tourism.csv', index_col=0)
 df['Quarter'] = pd.PeriodIndex(df['Quarter'].str[0:4] + '-' + df['Quarter'].str[5:], freq='q')
 #%% Set aggregations and calculate summing matrix
 aggregation_cols = ['State', 'Region', 'Purpose']
@@ -39,21 +54,21 @@ target = 'Trips'
 time_index = 'Quarter'
 end_train = '2015Q4'
 start_test = '2016Q1'
+# Add bottom_timeseries identifier and create actuals dataframe for all aggregations
 df['bottom_timeseries'] = df[aggregation_cols].agg('-'.join, axis=1)
-df_target = df.set_index(['bottom_timeseries', time_index])[target].unstack(0)
-df_target = df_target[df_S.columns]
-forecasts = pd.DataFrame(index=df_S.index, columns = df_target.index, dtype=np.float32)
-actuals = pd.DataFrame(index=df_S.index, columns = df_target.index, dtype=np.float32)
-for aggregate, summing_vector in df_S.iterrows():
-    # Get series
-    series = df_target @ summing_vector
+actuals_bottom_timeseries = df.set_index(['bottom_timeseries', time_index])[target]\
+                              .unstack(1)\
+                              .loc[df_S.columns]
+actuals = df_S @ actuals_bottom_timeseries
+# Create forecasts: a simple ETS model per timeseries
+forecasts = pd.DataFrame(index=actuals.index, columns = actuals.columns, dtype=np.float32)
+for index, series in actuals.iterrows():
     # Fit model and predict (we need to clip because otherwise there's a convergence error)
     model = AutoETS(auto=True, n_jobs=1, random_state=0)
     model.fit(np.clip(series.loc[:end_train], 1e-3, 1e16))
     forecast = model.predict(series.index)
     # Store to forecasts/actuals array
-    forecasts.loc[aggregate] = forecast.values
-    actuals.loc[aggregate] = series.values
+    forecasts.loc[index] = forecast.values
 
 # Calculate residuals (both in- and out-of-sample residuals)
 residuals = (forecasts - actuals)

@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import time
 from numba import njit, prange
-from typing import List
+from typing import List, Tuple
 #%% Functions to perform forecast reconciliation
 def reconcile_forecasts(yhat: np.ndarray, S: np.ndarray, residuals: np.ndarray=None, method: str='ols') -> np.ndarray:
     """Optimal reconciliation of hierarchical forecasts using various approaches.
@@ -211,7 +211,7 @@ def apply_reconciliation_methods(forecasts: pd.DataFrame, df_S: pd.DataFrame, re
         :type residuals: pd.DataFrame
         :param methods: list containing which reconciliation methods to be applied, defaults to None. 
         Choose from: 'ols', 'wls_var', 'wls_struct', 'mint_cov', 'mint_shrink'. None means all methods 
-        will be applied
+        will be applied.
         :type methods: List[str]
         
         :return: forecasts_methods, dataframe containing forecasts for all reconciliation methods
@@ -267,3 +267,46 @@ def aggregate_bottom_up_forecasts(forecasts: pd.DataFrame, df_S: pd.DataFrame) -
         forecasts_bu.loc[agg] = (df_S.loc[agg] @ forecasts).values.astype('float32')
 
     return forecasts_bu
+
+
+def calc_level_method_rmse(forecasts_methods: pd.DataFrame, actuals: pd.DataFrame, 
+                            base: str = 'base') -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Calculate RMSE for each level, for each method for a set of forecasts.
+    
+        :param forecasts_methods: dataframe containing forecasts for all reconciliation methods
+        :type forecasts_methods: pd.DataFrame
+        :param actuals: Dataframe containing the ground truth for all time series
+        :type actuals: pd.DataFrame
+        :param base: base to compare rmse against for the `rel_rmse` output. 
+        :type base: str
+        
+        :return: Tuple[rmse, rel_rmse], tuple containing (i) rmse for all methods, across all levels, and (ii)
+        relative rmse for all methods, across all levels. 
+        :rtype: Tuple[pd.DataFrame, pd.DataFrame]
+    
+    """
+    # Input verification
+    assert base in forecasts_methods.index, f'Chosen base {base} not in index of forecasts_methods'
+    
+    # Compute rmse for all methods & levels
+    rmse_index = forecasts_methods.index.droplevel(['Value']).drop_duplicates()
+    rmse = pd.DataFrame(index=rmse_index, columns=['RMSE'], dtype=np.float64)
+    # rmse = pd.DataFrame()
+    methods = forecasts_methods.index.get_level_values('Method').unique()
+    for method in methods:
+        forecasts_method = forecasts_methods.loc[method]
+        sq_error = ((forecasts_method - actuals.loc[:, forecasts_method.columns])**2).stack()
+        rmse_current = np.sqrt(sq_error.groupby(['Aggregation']).mean())
+        rmse.loc[(method, slice(None)), 'RMSE'] = rmse_current.loc[rmse.loc[method, 'RMSE'].index].values
+        rmse.loc[(method, 'All series'), 'RMSE'] = np.sqrt(sq_error.mean())
+        
+    rmse = rmse.sort_index().unstack(0)
+    # Sort by base, then put in order: Total first, bottom-level series (i.e. None) penultimate, aggregate
+    # over all time series + aggregates ('All series') last
+    rmse.columns = rmse.columns.droplevel(0)
+    rmse = rmse[methods].sort_values(by=base, ascending=False)
+    index_cols = list(rmse.index.drop('All series')) + ['All series']
+    rmse = rmse.reindex(index = index_cols)
+    rel_rmse = rmse.div(rmse[base], axis=0)
+
+    return rmse, rel_rmse
