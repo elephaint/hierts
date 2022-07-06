@@ -1,5 +1,7 @@
 # hierTS <img src="https://icai.ai/wp-content/uploads/2020/01/AIRLabAmsterdam-10-6-gecomprimeerd-transparant.png" width="300" alt="Airlab Amsterdam" align="right"> 
-Hierarchical forecasting using reconciliation methods
+[![PyPi version](https://img.shields.io/pypi/v/hierts)](https://pypi.org/project/hierts/)
+[![Python version](https://img.shields.io/pypi/pyversions/hierts)](https://docs.conda.io/en/latest/miniconda.html)
+[![GitHub license](https://img.shields.io/pypi/l/hierts)](https://github.com/elephaint/hierts/blob/main/LICENSE)
 
 _Hierachical Time Series_ (hierTS) is a lightweight package that offers hierarchical forecasting reconciliation techniques to Python users.
 
