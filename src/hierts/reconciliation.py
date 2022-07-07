@@ -161,17 +161,19 @@ def calc_summing_matrix(df: pd.DataFrame, aggregation_cols: List[str], aggregati
     for col in aggregation_cols_in_aggregations:
         assert col in aggregation_cols, f"Column {col} in aggregations not present in aggregation_cols"
     # Find the unique aggregation columns from the given set of aggregations
-    levels = df[aggregation_cols].drop_duplicates().reset_index(drop=True)
+    levels = df[aggregation_cols].drop_duplicates()
+    levels['bottom_timeseries'] = levels[aggregation_cols].astype(str).agg('-'.join, axis=1)
+    levels = levels.sort_values(by='bottom_timeseries').reset_index(drop=True)
     # Create summing matrix for all aggregation levels
     df_S_aggs = pd.DataFrame()
     for aggregation in aggregations:
         aggregation_name = '-'.join(aggregation)
-        S_agg = pd.get_dummies(levels[aggregation].astype(str).agg('-'.join, axis=1).sort_values().reset_index(drop=True)).T    
+        S_agg = pd.get_dummies(levels[aggregation].astype(str).agg('-'.join, axis=1)).T    
         S_agg = pd.concat({f'{aggregation_name}': S_agg}, names=['Aggregation', 'Value'])
         df_S_aggs = pd.concat((df_S_aggs, S_agg))
     
     # Create summing matrix for bottom level series
-    bottom_timeseries = levels[aggregation_cols].astype(str).agg('-'.join, axis=1).sort_values().reset_index(drop=True)
+    bottom_timeseries = levels['bottom_timeseries']
     df_S_bottom = pd.get_dummies(bottom_timeseries).T 
     df_S_bottom = pd.concat({'Bottom level': df_S_bottom}, names=['Aggregation', 'Value'])
     # Create summing matrix (=row vector) for top level (=total) series

@@ -34,7 +34,7 @@
 #%% Read packages
 import pandas as pd
 import numpy as np
-from hierts.reconciliation import calc_summing_matrix, apply_reconciliation_methods, aggregate_bottom_up_forecasts, calc_level_method_rmse
+from hierts.reconciliation import apply_reconciliation_methods, aggregate_bottom_up_forecasts, calc_level_method_rmse
 from sktime.forecasting.ets import AutoETS
 #%% Read data
 df = pd.read_csv('data/tourism.csv', index_col=0)
