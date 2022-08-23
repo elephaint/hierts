@@ -76,9 +76,12 @@ residuals = (forecasts - actuals)
 # Use residuals on training set 
 residuals_train = residuals.loc[:, :end_train]
 forecasts_test = forecasts.loc[:, start_test:]
-forecasts_methods = apply_reconciliation_methods(forecasts_test, df_S, residuals_train, methods=['ols', 'wls_struct', 'wls_var', 'mint_shrink'])
+forecasts_methods = apply_reconciliation_methods(forecasts_test, df_S, 
+                        actuals.loc[:, :end_train], forecasts.loc[:, :end_train],
+                        methods=['ols', 'wls_struct', 'wls_var', 'mint_shrink'],
+                        positive=True)
 # Bottom-up forecasts
-forecasts_bu_bottom_level = forecasts.loc['Bottom level']
+forecasts_bu_bottom_level = forecasts.loc['bottom_timeseries']
 forecasts_bu = aggregate_bottom_up_forecasts(forecasts_bu_bottom_level, df_S)
 forecasts_bu_test = forecasts_bu.loc[:, start_test:]
 forecasts_method = pd.concat({'bottom-up': forecasts_bu_test}, names=['Method'])

@@ -56,9 +56,10 @@ forecasts_bottom_timeseries = df.set_index(['bottom_timeseries', time_index])[f'
                                 .loc[df_S.columns]
 actuals = df_S @ actuals_bottom_timeseries
 forecasts = df_S @ forecasts_bottom_timeseries
-residuals = (forecasts - actuals)
 #%% Reconciliation
 forecasts_test = forecasts.loc[:, start_test:]
-residuals_train = residuals.loc[:, :end_train]
-forecasts_reconciled = apply_reconciliation_methods(forecasts_test, df_S, residuals_train, methods=['ols', 'wls_var', 'mint_shrink'])
+forecasts_reconciled = apply_reconciliation_methods(forecasts_test, df_S, 
+                                    actuals.loc[:, :end_train], forecasts.loc[:, :end_train],
+                                    methods=['ols', 'wls_var', 'mint_shrink'],
+                                    positive=True)
 rmse, rel_rmse = calc_level_method_rmse(forecasts_reconciled, actuals, base='base')
