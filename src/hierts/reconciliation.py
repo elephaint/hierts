@@ -245,7 +245,7 @@ def calc_summing_matrix(df: pd.DataFrame, aggregation_cols: List[str], aggregati
 
 def apply_reconciliation_methods(forecasts: pd.DataFrame, df_S: pd.DataFrame, y_train: pd.DataFrame,
                                 yhat_train: pd.DataFrame, methods: List[str] = None, 
-                                positive: bool = False) -> pd.DataFrame:
+                                positive: bool = False, return_timing: bool = False) -> pd.DataFrame:
     """Apply all hierarchical forecasting reconciliation methods to a set of forecasts.
 
         :param forecasts: dataframe containing forecasts for all aggregations
@@ -260,6 +260,8 @@ def apply_reconciliation_methods(forecasts: pd.DataFrame, df_S: pd.DataFrame, y_
         :type methods: List[str]
         :param positive: Boolean to enforce reconciled forecasts are >= zero, defaults to False.
         :type positive: bool, optional
+        :param return_timing: Flag to return execution time for reconciliation methods
+        :type return_timing: bool, optional
         
         :return: forecasts_methods, dataframe containing forecasts for all reconciliation methods
         :rtype: pd.DataFrame  
@@ -277,11 +279,13 @@ def apply_reconciliation_methods(forecasts: pd.DataFrame, df_S: pd.DataFrame, y_
         methods = ['ols', 'wls_struct', 'wls_var', 'mint_cov', 'mint_shrink', 'erm', 'erm_reg', 'erm_bu']
     forecasts_methods = []
     forecasts_methods.append(forecasts_method)
+    timings = {}
     for method in methods:
         t0 = time.perf_counter()
         ytilde = reconcile_forecasts(yhat, S, y_train, yhat_train, method=method, positive=positive)
         t1 = time.perf_counter()
         print(f'Method {method}, reconciliation time: {t1-t0:.4f}s')
+        timings[method] = t1 - t0
         forecasts_method = pd.DataFrame(data=ytilde,
                                         index=forecasts.index, 
                                         columns=cols)
@@ -289,8 +293,10 @@ def apply_reconciliation_methods(forecasts: pd.DataFrame, df_S: pd.DataFrame, y_
         forecasts_methods.append(forecasts_method)
 
     forecasts_methods = pd.concat(forecasts_methods)
-    
-    return forecasts_methods
+    if return_timing:
+        return forecasts_method, timings
+    else:
+        return forecasts_methods
 
 def aggregate_bottom_up_forecasts(forecasts: pd.DataFrame, df_S: pd.DataFrame, 
                                 name_bottom_timeseries: str = 'bottom_timeseries') -> pd.DataFrame:
