@@ -156,12 +156,12 @@ def shrunk_covariance_schaferstrimmer(residuals, residuals_mean, residuals_std):
     sum_sq_emp_corr = np.float32(-n_timeseries)
     factor_emp_corr = n_samples / (n_samples - 1)
     factor_var_emp_cor = n_samples / (n_samples - 1)**3
-    for i in range(n_timeseries):
+    for i in prange(n_timeseries):
         # Calculate standardized residuals
         X_i = (residuals[i] - residuals_mean[i]) 
         Xs_i = X_i / residuals_std[i]
         Xs_i_mean = np.mean(Xs_i)
-        for j in prange(n_timeseries):
+        for j in range(n_timeseries):
             # Calculate standardized residuals
             X_j = (residuals[j] - residuals_mean[j]) 
             Xs_j = X_j / residuals_std[j]
