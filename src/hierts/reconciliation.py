@@ -23,7 +23,7 @@ import pandas as pd
 import time
 from numba import njit, prange
 from typing import List, Tuple
-from scipy.sparse import coo_matrix
+from scipy.sparse import coo_matrix, csc_matrix
 from sklearn.linear_model import LassoCV, Lasso
 #%% Functions to perform forecast reconciliation
 def reconcile_forecasts(yhat: np.ndarray, S: np.ndarray, y_train: np.ndarray=None, yhat_train: np.ndarray=None, method: str='ols', positive: bool=False) -> np.ndarray:
@@ -315,13 +315,18 @@ def aggregate_bottom_up_forecasts(forecasts: pd.DataFrame, df_S: pd.DataFrame,
     """
     # Check to ensure correct inputs are given
     assert set(df_S.columns) == set(forecasts.index), 'Index of forecasts should match columns of df_S'
+    # Convert df_S 
+    if hasattr(df_S, "sparse"):
+        print("S is sparse")
+        S = csc_matrix(df_S.sparse.to_coo())
+    else:
+        print("S is dense")
+        S = df_S.values
     # Bottom-up forecasts
     all_aggregations = df_S.index.get_level_values('Aggregation').unique()
     all_aggregations = all_aggregations.drop(name_bottom_timeseries)
     forecasts_bu = pd.DataFrame(index=df_S.index, columns=forecasts.columns)
-    forecasts_bu.loc[name_bottom_timeseries] = forecasts.values.astype('float32')
-    for agg in all_aggregations:
-        forecasts_bu.loc[agg] = (df_S.loc[agg] @ forecasts).values.astype('float32')
+    forecasts_bu.loc[:] = (S @ forecasts.values)
 
     return forecasts_bu
 
