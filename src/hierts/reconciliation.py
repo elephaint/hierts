@@ -361,7 +361,7 @@ def apply_reconciliation_methods(forecasts: pd.DataFrame, df_S: pd.DataFrame, y_
 
     forecasts_methods = pd.concat(forecasts_methods)
     if return_timing:
-        return forecasts_method, timings
+        return forecasts_methods, timings
     else:
         return forecasts_methods
 
