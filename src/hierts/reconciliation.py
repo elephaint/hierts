@@ -25,6 +25,7 @@ from numba import njit, prange
 from typing import List, Tuple
 from scipy.sparse import coo_matrix, csc_matrix
 from sklearn.linear_model import LassoCV, Lasso
+from pandas.api.types import is_datetime64_any_dtype as is_datetime
 #%% Functions to perform forecast reconciliation
 def reconcile_forecasts(yhat: np.ndarray, S: np.ndarray, y_train: np.ndarray=None, yhat_train: np.ndarray=None, method: str='ols', positive: bool=False) -> np.ndarray:
     """Optimal reconciliation of hierarchical forecasts using various approaches.
@@ -188,14 +189,14 @@ def shrunk_covariance_schaferstrimmer(residuals, residuals_mean, residuals_std):
 
 def calc_summing_matrix(df: pd.DataFrame, aggregation_cols: List[str], aggregations: List[List[str]] = None, 
                         sparse: bool = False, name_bottom_timeseries: str = 'bottom_timeseries') -> pd.DataFrame:
-    """Given a dataframe of timeseries and columns indicating their groupings, this function calculates a summing matrix according to a set of specified aggregations for the time series. 
+    """Given a dataframe of timeseries and columns indicating their groupings, this function calculates a cross-sectional hierarchy according to a set of specified aggregations for the time series. This function is deprecated, please use 'hierarchy_cross_sectional' instead. 
 
         :param df: DataFrame containing information about time series and their groupings
         :type df: pd.DataFrame
         :param aggregation_cols: List containing all the columns that contain categorization of the timeseries. 
-        :type df: List[str]
+        :type aggregation_cols: List[str]
         :param aggregations: List of Lists containing the aggregations required, defaults to None. In case of None, the summing matrix will only contain (i) the summation vector for the total series (i.e. a row vector of ones of length n_bottom_series), and (ii) the summation matrix for the bottom level series (i.e. the identity matrix for the amount of bottom level time series). Hence, in the case of None, the output df_S will have shape [n_bottom_series + 1, n_bottom_series]
-        :type df: List[List[str]]
+        :type aggregations: List[List[str]]
         :param sparse: Boolean to indicate whether the returned summing matrix should be backed by a SparseArray (True) or a regular Numpy array (False), defaults to False.
         :type sparse: bool
         :param name_bottom_timeseries: name for the bottom level time series in the hierarchy, defaults to 'bottom_timeseries'.
@@ -205,19 +206,37 @@ def calc_summing_matrix(df: pd.DataFrame, aggregation_cols: List[str], aggregati
         :rtype: pd.DataFrame filled with np.float32
     
     """
-    # Set aggregations to empty list in case it is not provided
-    if aggregations is None:
-        aggregations = []
-    # Check whether aggregations are in the aggregation_cols
-    aggregation_cols_in_aggregations = list(set([col for cols in aggregations for col in cols]))
+    print("'calc_summing_matrix' is deprecated. Please use hierarchy_cross_sectional to compute cross-sectional hierarchies")
+
+    return None
+
+def hierarchy_cross_sectional(df: pd.DataFrame, aggregations: List[List[str]], 
+                        sparse: bool = False, name_bottom_timeseries: str = 'bottom_timeseries') -> pd.DataFrame:
+    """Given a dataframe of timeseries and columns indicating their groupings, this function calculates a cross-sectional hierarchy according to a set of specified aggregations for the time series.
+
+        :param df: DataFrame containing information about time series and their groupings
+        :type df: pd.DataFrame
+        :param aggregations: List of Lists containing the aggregations required. 
+        :type aggregations: List[List[str]]
+        :param sparse: Boolean to indicate whether the returned summing matrix should be backed by a SparseArray (True) or a regular Numpy array (False), defaults to False.
+        :type sparse: bool
+        :param name_bottom_timeseries: name for the bottom level time series in the hierarchy, defaults to 'bottom_timeseries'.
+        :type name_bottom_timeseries: str
+        
+        :return: df_S, output dataframe containing the summing matrix of shape [(n_bottom_timeseries + n_aggregate_timeseries) x n_bottom_timeseries]. The number of aggregate time series is the result of applying all the required aggregations.
+        :rtype: pd.DataFrame filled with np.float32
+    
+    """
+    # Check whether aggregations are in the df
+    aggregation_cols_in_aggregations = list(dict.fromkeys([col for cols in aggregations for col in cols]))
     for col in aggregation_cols_in_aggregations:
-        assert col in aggregation_cols, f"Column {col} in aggregations not present in aggregation_cols"
+        assert col in df.columns, f"Column {col} in aggregations not present in df"
     # Find the unique aggregation columns from the given set of aggregations
-    levels = df[aggregation_cols].drop_duplicates()
-    levels[name_bottom_timeseries] = levels[aggregation_cols].astype(str).agg('-'.join, axis=1)
+    levels = df[aggregation_cols_in_aggregations].drop_duplicates()
+    levels[name_bottom_timeseries] = levels[aggregation_cols_in_aggregations].astype(str).agg('-'.join, axis=1)
     levels = levels.sort_values(by=name_bottom_timeseries).reset_index(drop=True)
     n_bottom_timeseries = len(levels)
-    aggregations += [[name_bottom_timeseries]]
+    aggregations_total = aggregations + [[name_bottom_timeseries]]
     # Create summing matrix for all aggregation levels
     ones = np.ones(n_bottom_timeseries, dtype=np.float32)
     idx_range = np.arange(n_bottom_timeseries)
@@ -226,7 +245,7 @@ def calc_summing_matrix(df: pd.DataFrame, aggregation_cols: List[str], aggregati
     df_S_top = pd.DataFrame(ones[None, :], index=['Total'])
     df_S_top = pd.concat({'Total': df_S_top}, names=['Aggregation', 'Value'])
     df_S_aggs.append(df_S_top)
-    for aggregation in aggregations:
+    for aggregation in aggregations_total:
         aggregation_name = '-'.join(aggregation)
         agg = pd.Categorical(levels[aggregation].astype(str).agg('-'.join, axis=1))
         S_agg_sp = coo_matrix((ones, (agg.codes, idx_range)))        
@@ -240,6 +259,54 @@ def calc_summing_matrix(df: pd.DataFrame, aggregation_cols: List[str], aggregati
     # Stack all summing matrices: top, aggregations, bottom
     df_S = pd.concat(df_S_aggs)
     df_S.columns = levels[name_bottom_timeseries]
+
+    return df_S
+
+def hierarchy_temporal(df: pd.DataFrame, time_column: str, aggregations: List[List[str]], sparse: bool = False) -> pd.DataFrame:
+    """Given a dataframe of timeseries and a time_column indicating the timestamp of each series, this function calculates a temporal hierarchy according to a set of specified aggregations for the time series.
+
+        :param df: DataFrame containing information about time series and their groupings
+        :type df: pd.DataFrame
+        :param time_column: String containing the column name that contains the time column of the timeseries 
+        :type time_column: str
+        :param aggregations: List of Lists containing the aggregations required. 
+        :type aggregations: List[List[str]]
+        :param sparse: Boolean to indicate whether the returned summing matrix should be backed by a SparseArray (True) or a regular Numpy array (False), defaults to False.
+        :type sparse: bool
+        
+        :return: df_S, output dataframe containing a summing matrix of shape [n_timesteps x (n_timesteps + n_aggregate_timesteps)]. The number of aggregate timesteps is the result of applying all the required temporal aggregations.
+        :rtype: pd.DataFrame filled with np.float32
+    
+    """
+    assert time_column in df.columns, "The time_column is not a column in the dataframe"
+    assert is_datetime(df[time_column]), "The time_column should be a datetime64-dtype. Use `pd.to_datetime` to convert objects to the correct datetime format."
+    # Check whether aggregations are in the df
+    aggregation_cols_in_aggregations = list(dict.fromkeys([col for cols in aggregations for col in cols]))
+    for col in aggregation_cols_in_aggregations:
+        assert col in df.columns, f"Column {col} in aggregations not present in df"
+    # Find the unique aggregation columns from the given set of aggregations
+    levels = df[aggregation_cols_in_aggregations + [time_column]].drop_duplicates()
+    levels = levels.sort_values(by=time_column).reset_index(drop=True)
+    n_bottom_timestamps = len(levels)
+    aggregations_total = aggregations + [[time_column]]
+    # Create summing matrix for all aggregation levels
+    ones = np.ones(n_bottom_timestamps, dtype=np.float32)
+    idx_range = np.arange(n_bottom_timestamps)
+    df_S_aggs = []
+    for aggregation in aggregations_total:
+        aggregation_name = '-'.join(aggregation)
+        agg = pd.Categorical(levels[aggregation].astype(str).agg('-'.join, axis=1))
+        S_agg_sp = coo_matrix((ones, (agg.codes, idx_range)))        
+        if sparse:
+            S_agg = pd.DataFrame.sparse.from_spmatrix(S_agg_sp, index=agg.categories)    
+        else:
+            S_agg = pd.DataFrame(S_agg_sp.todense(), index=agg.categories)
+        S_agg = pd.concat({f'{aggregation_name}': S_agg}, names=['Aggregation', 'Value'])
+        df_S_aggs.append(S_agg)
+    
+    # Stack all summing matrices: aggregations, bottom
+    df_S = pd.concat(df_S_aggs)
+    df_S.columns = levels[time_column]
 
     return df_S
 
