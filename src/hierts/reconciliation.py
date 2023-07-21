@@ -97,7 +97,7 @@ def reconcile_forecasts(yhat: np.ndarray, S: np.ndarray, y_train: np.ndarray=Non
         # Trace minimization using the shrunk empirical covariance matrix
         residuals = yhat_train - y_train
         residuals_mean = np.mean(residuals, axis=1)
-        residuals_std = np.std(residuals, axis=1)
+        residuals_std = np.maximum(np.std(residuals, axis=1), 1e-6)
         W = shrunk_covariance_schaferstrimmer(residuals, residuals_mean, residuals_std)
         UtW = Ut @ W
     elif method == 'erm':
@@ -206,7 +206,7 @@ def calc_summing_matrix(df: pd.DataFrame, aggregation_cols: List[str], aggregati
         :rtype: pd.DataFrame filled with np.float32
     
     """
-    print("'calc_summing_matrix' is deprecated. Please use hierarchy_cross_sectional to compute cross-sectional hierarchies")
+    print("'calc_summing_matrix' is deprecated. Please use hierarchy_cross_sectional to compute cross-sectional hierarchies.")
 
     return None
 
@@ -385,7 +385,7 @@ def aggregate_bottom_up_forecasts(forecasts: pd.DataFrame, df_S: pd.DataFrame,
     # Convert df_S 
     if hasattr(df_S, "sparse"):
         print("S is sparse")
-        S = csc_matrix(df_S.sparse.to_coo())
+        S = df_S.sparse.to_coo().tocsc()
     else:
         print("S is dense")
         S = df_S.values
@@ -414,27 +414,50 @@ def calc_level_method_rmse(forecasts_methods: pd.DataFrame, actuals: pd.DataFram
     
     """
     # Input verification
-    assert base in forecasts_methods.index, f'Chosen base {base} not in index of forecasts_methods'
+    print("calc_level_method_rmse is deprecated as of version 0.8. Please use calc_level_method_error(error='rmse') instead.")
+
+    return None
+
+def calc_level_method_error(forecasts_methods: pd.DataFrame, actuals: pd.DataFrame, 
+                            metric: str = 'RMSE') -> pd.DataFrame:
+    """Calculate RMSE for each level, for each method for a set of forecasts.
     
-    # Compute rmse for all methods & levels
-    rmse_index = forecasts_methods.index.droplevel(['Value']).drop_duplicates()
-    rmse = pd.DataFrame(index=rmse_index, columns=['RMSE'], dtype=np.float64)
-    # rmse = pd.DataFrame()
+        :param forecasts_methods: dataframe containing forecasts for all reconciliation methods
+        :type forecasts_methods: pd.DataFrame
+        :param actuals: Dataframe containing the ground truth for all time series
+        :type actuals: pd.DataFrame
+        :param metric: metric to compute. Options are: ['RMSE', 'MAE']
+        :type metric: str
+                
+        :return: Error for all methods, across all levels.
+        :rtype: pd.DataFrame
+    
+    """   
+    # Compute error for all methods & levels
+    error_index = forecasts_methods.index.droplevel(['Value']).drop_duplicates()
+    error = pd.DataFrame(index=error_index, columns=[metric], dtype=np.float64)
     methods = forecasts_methods.index.get_level_values('Method').unique()
     for method in methods:
         forecasts_method = forecasts_methods.loc[method]
-        sq_error = ((forecasts_method - actuals.loc[:, forecasts_method.columns])**2).stack()
-        rmse_current = np.sqrt(sq_error.groupby(['Aggregation']).mean())
-        rmse.loc[(method, slice(None)), 'RMSE'] = rmse_current.loc[rmse.loc[method, 'RMSE'].index].values
-        rmse.loc[(method, 'All series'), 'RMSE'] = np.sqrt(sq_error.mean())
-        
-    rmse = rmse.sort_index().unstack(0)
+        if metric == "RMSE":
+            sq_error = ((forecasts_method - actuals.loc[:, forecasts_method.columns])**2).stack()
+            error_current = np.sqrt(sq_error.groupby(['Aggregation']).mean())
+            error.loc[(method, slice(None)), metric] = error_current.loc[error.loc[method, metric].index].values
+            error.loc[(method, 'All series'), metric] = np.sqrt(sq_error.mean())
+        elif metric == "MAE":
+            abs_error = np.abs(forecasts_method - actuals.loc[:, forecasts_method.columns]).stack()
+            error_current = abs_error.groupby(['Aggregation']).mean()
+            error.loc[(method, slice(None)), metric] = error_current.loc[error.loc[method, metric].index].values
+            error.loc[(method, 'All series'), metric] = abs_error.mean()
+        else:
+            raise NotImplementedError()
+
+    error = error.sort_index().unstack(0)
     # Sort by base, then put in order: Total first, bottom-level series (i.e. None) penultimate, aggregate
     # over all time series + aggregates ('All series') last
-    rmse.columns = rmse.columns.droplevel(0)
-    rmse = rmse[methods].sort_values(by=base, ascending=False)
-    index_cols = list(rmse.index.drop('All series')) + ['All series']
-    rmse = rmse.reindex(index = index_cols)
-    rel_rmse = rmse.div(rmse[base], axis=0)
+    error.columns = error.columns.droplevel(0)
+    # error = error[methods].sort_values(by=base, ascending=False)
+    index_cols = list(error.index.drop('All series')) + ['All series']
+    error = error.reindex(index = index_cols)
 
-    return rmse, rel_rmse
+    return error
