@@ -237,6 +237,11 @@ def hierarchy_cross_sectional(df: pd.DataFrame, aggregations: List[List[str]],
     levels = levels.sort_values(by=name_bottom_timeseries).reset_index(drop=True)
     n_bottom_timeseries = len(levels)
     aggregations_total = aggregations + [[name_bottom_timeseries]]
+    # Check if we have not introduced redundant columns. If so, remove that column.
+    for col, n_uniques in levels.nunique().iteritems():
+        if col != name_bottom_timeseries and n_uniques == n_bottom_timeseries:
+            levels = levels.drop(columns=col)
+            aggregations_total.remove([col])
     # Create summing matrix for all aggregation levels
     ones = np.ones(n_bottom_timeseries, dtype=np.float32)
     idx_range = np.arange(n_bottom_timeseries)
