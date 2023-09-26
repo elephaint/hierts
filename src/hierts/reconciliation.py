@@ -20,10 +20,11 @@
 #%% Import packages
 import numpy as np 
 import pandas as pd
+import polars as pl
 import time
 from numba import njit, prange
 from typing import List, Tuple
-from scipy.sparse import coo_matrix, csc_matrix
+from scipy.sparse import coo_matrix, csc_matrix, csr_array, vstack
 from sklearn.linear_model import LassoCV, Lasso
 from pandas.api.types import is_datetime64_any_dtype as is_datetime
 #%% Functions to perform forecast reconciliation
@@ -223,7 +224,7 @@ def hierarchy_cross_sectional(df: pd.DataFrame, aggregations: List[List[str]],
         :param name_bottom_timeseries: name for the bottom level time series in the hierarchy, defaults to 'bottom_timeseries'.
         :type name_bottom_timeseries: str
         
-        :return: df_S, output dataframe containing the summing matrix of shape [(n_bottom_timeseries + n_aggregate_timeseries) x n_bottom_timeseries]. The number of aggregate time series is the result of applying all the required aggregations.
+        :return: df_Sc, output dataframe containing the summing matrix of shape [(n_bottom_timeseries + n_aggregate_timeseries) x n_bottom_timeseries]. The number of aggregate time series is the result of applying all the required aggregations.
         :rtype: pd.DataFrame filled with np.float32
     
     """
@@ -238,7 +239,7 @@ def hierarchy_cross_sectional(df: pd.DataFrame, aggregations: List[List[str]],
     n_bottom_timeseries = len(levels)
     aggregations_total = aggregations + [[name_bottom_timeseries]]
     # Check if we have not introduced redundant columns. If so, remove that column.
-    for col, n_uniques in levels.nunique().iteritems():
+    for col, n_uniques in levels.nunique().items():
         if col != name_bottom_timeseries and n_uniques == n_bottom_timeseries:
             levels = levels.drop(columns=col)
             aggregations_total.remove([col])
@@ -267,6 +268,59 @@ def hierarchy_cross_sectional(df: pd.DataFrame, aggregations: List[List[str]],
 
     return df_S
 
+def hierarchy_cross_sectional_array(df: pd.DataFrame, aggregations: List[List[str]], 
+                        sparse: bool = False) -> pd.DataFrame:
+    """Given a dataframe of timeseries and columns indicating their groupings, this function calculates a cross-sectional hierarchy according to a set of specified aggregations for the time series and returns an array. If a DataFrame is required, use hierarchy_cross_sectional.
+
+        :param df: DataFrame containing information about time series and their groupings
+        :type df: pd.DataFrame
+        :param aggregations: List of Lists containing the aggregations required. 
+        :type aggregations: List[List[str]]
+        :param sparse: Boolean to indicate whether the returned summing matrix should be backed by a SparseArray (True) or a regular Numpy array (False), defaults to False.
+        :type sparse: bool
+        
+        :return: Sc, output array containing the summing matrix of shape [(n_bottom_timeseries + n_aggregate_timeseries) x n_bottom_timeseries]. The number of aggregate time series is the result of applying all the required aggregations.
+        :rtype: (sparse) array of np.float32
+    
+    """
+    dfpl = pl.from_pandas(df)
+    # Check whether aggregations are in the df
+    aggregation_cols_in_aggregations = list(dict.fromkeys([col for cols in aggregations for col in cols]))
+    for col in aggregation_cols_in_aggregations:
+        assert col in dfpl.columns, f"Column {col} in aggregations not present in df"
+    # Find the unique aggregation columns from the given set of aggregations
+    levels = dfpl[aggregation_cols_in_aggregations].unique()
+    name_bottom_timeseries = 'bottom_timeseries'
+    levels = levels.cast(pl.Utf8)
+    levels = levels.with_columns(pl.concat_str(pl.col(aggregation_cols_in_aggregations), separator='-').alias(name_bottom_timeseries))
+    levels = levels.sort(by=name_bottom_timeseries)
+    n_bottom_timeseries = len(levels)
+    aggregations_total = aggregations + [[name_bottom_timeseries]]
+    # Check if we have not introduced redundant columns. If so, remove that column.
+    for col in levels.columns:
+        n_uniques = levels[col].n_unique()
+        if col != name_bottom_timeseries and n_uniques == n_bottom_timeseries:
+            levels = levels.drop(columns=col)
+            aggregations_total.remove([col])
+    # Create summing matrix for all aggregation levels
+    ones = np.ones(n_bottom_timeseries, dtype=np.float32)
+    idx_range = np.arange(n_bottom_timeseries)
+    # Create summing matrix (=row vector) for top level (=total) series
+    S = csr_array(ones)
+    for aggregation in aggregations_total:
+        agg = levels.select(pl.concat_str(pl.col(aggregation), separator='-').alias('agg'))
+        codes = pd.Categorical(agg['agg'].to_pandas()).codes
+        S_agg_sp = csr_array(coo_matrix((ones, (codes, idx_range))))
+        S = vstack((S, S_agg_sp), format="csr")
+
+    if sparse:
+        S.sort_indices()
+    else:
+        S = S.todense()
+
+    return S
+
+
 def hierarchy_temporal(df: pd.DataFrame, time_column: str, aggregations: List[List[str]], sparse: bool = False) -> pd.DataFrame:
     """Given a dataframe of timeseries and a time_column indicating the timestamp of each series, this function calculates a temporal hierarchy according to a set of specified aggregations for the time series.
 
@@ -279,7 +333,7 @@ def hierarchy_temporal(df: pd.DataFrame, time_column: str, aggregations: List[Li
         :param sparse: Boolean to indicate whether the returned summing matrix should be backed by a SparseArray (True) or a regular Numpy array (False), defaults to False.
         :type sparse: bool
         
-        :return: df_S, output dataframe containing a summing matrix of shape [n_timesteps x (n_timesteps + n_aggregate_timesteps)]. The number of aggregate timesteps is the result of applying all the required temporal aggregations.
+        :return: df_St, output dataframe containing a summing matrix of shape [n_timesteps x (n_timesteps + n_aggregate_timesteps)]. The number of aggregate timesteps is the result of applying all the required temporal aggregations.
         :rtype: pd.DataFrame filled with np.float32
     
     """
@@ -314,6 +368,54 @@ def hierarchy_temporal(df: pd.DataFrame, time_column: str, aggregations: List[Li
     df_S.columns = levels[time_column]
 
     return df_S
+
+def hierarchy_temporal_array(df: pd.DataFrame, time_column: str, aggregations: List[List[str]], sparse: bool = False) -> pd.DataFrame:
+    """Given a dataframe of timeseries and a time_column indicating the timestamp of each series, this function calculates a temporal hierarchy according to a set of specified aggregations for the time series and returns an array. If a DataFrame is required, use hierarchy_temporal.
+
+        :param df: DataFrame containing information about time series and their groupings
+        :type df: pd.DataFrame
+        :param time_column: String containing the column name that contains the time column of the timeseries 
+        :type time_column: str
+        :param aggregations: List of Lists containing the aggregations required. 
+        :type aggregations: List[List[str]]
+        :param sparse: Boolean to indicate whether the returned summing matrix should be backed by a SparseArray (True) or a regular Numpy array (False), defaults to False.
+        :type sparse: bool
+        
+        :return: St, output array containing a summing matrix of shape [n_timesteps x (n_timesteps + n_aggregate_timesteps)]. The number of aggregate timesteps is the result of applying all the required temporal aggregations.
+        :rtype: (sparse) array of np.float32
+    
+    """
+    dfpl = pl.from_pandas(df)
+    assert time_column in dfpl.columns, "The time_column is not a column in the dataframe"
+    assert dfpl[time_column].dtype == pl.Datetime, "The time_column should be a datetime64-dtype. "
+    # Check whether aggregations are in the df
+    aggregation_cols_in_aggregations = list(dict.fromkeys([col for cols in aggregations for col in cols]))
+    for col in aggregation_cols_in_aggregations:
+        assert col in dfpl.columns, f"Column {col} in aggregations not present in df"
+    # Find the unique aggregation columns from the given set of aggregations
+    levels = dfpl[aggregation_cols_in_aggregations + [time_column]].unique()
+    levels = levels.sort(by=time_column)
+    n_bottom_timestamps = len(levels)
+    aggregations_total = aggregations + [[time_column]]
+    # Create summing matrix for all aggregation levels
+    ones = np.ones(n_bottom_timestamps, dtype=np.float32)
+    idx_range = np.arange(n_bottom_timestamps)
+    for i, aggregation in enumerate(aggregations_total):
+        agg = levels.select(pl.concat_str(pl.col(aggregation), separator='-').alias('agg'))
+        codes = pd.Categorical(agg['agg'].to_pandas()).codes
+        S_agg_sp = csr_array(coo_matrix((ones, (codes, idx_range))))
+        if i == 0:
+            S = S_agg_sp
+        else:
+            S = vstack((S, S_agg_sp), format="csr")
+
+    if sparse:
+        S.sort_indices()
+    else:
+        S = S.todense()
+
+    return S
+
 
 def apply_reconciliation_methods(forecasts: pd.DataFrame, df_S: pd.DataFrame, y_train: pd.DataFrame,
                                 yhat_train: pd.DataFrame, methods: List[str] = None, 
@@ -454,6 +556,16 @@ def calc_level_method_error(forecasts_methods: pd.DataFrame, actuals: pd.DataFra
             error_current = abs_error.groupby(['Aggregation']).mean()
             error.loc[(method, slice(None)), metric] = error_current.loc[error.loc[method, metric].index].values
             error.loc[(method, 'All series'), metric] = abs_error.mean()
+        elif metric == "MAPE":
+            mape_error = np.abs((actuals.loc[:, forecasts_method.columns] - forecasts_method) / actuals.loc[:, forecasts_method.columns]).stack()
+            error_current = mape_error.groupby(['Aggregation']).mean()
+            error.loc[(method, slice(None)), metric] = error_current.loc[error.loc[method, metric].index].values
+            error.loc[(method, 'All series'), metric] = mape_error.mean()
+        elif metric == "SMAPE":
+            smape_error = (np.abs(forecasts_method - actuals.loc[:, forecasts_method.columns]) / (np.abs(actuals.loc[:, forecasts_method.columns]) + np.abs(forecasts_method))).stack()
+            error_current = smape_error.groupby(['Aggregation']).mean()
+            error.loc[(method, slice(None)), metric] = error_current.loc[error.loc[method, metric].index].values
+            error.loc[(method, 'All series'), metric] = smape_error.mean()
         else:
             raise NotImplementedError()
 
